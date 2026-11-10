@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>易記密碼生成器</title>
+<style>
+:root{
+  --bg:#f6f5f1; --card:#ffffff; --ink:#1d2430; --muted:#6b7280; --line:#e3e1da;
+  --accent:#2f6f5e; --accent-ink:#ffffff; --digit:#2563eb; --sym:#c2410c;
+  --weak:#dc2626; --ok:#d97706; --good:#2f6f5e; --great:#047857;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171c; --card:#1d2229; --ink:#eceff4; --muted:#98a2b3; --line:#2c333d;
+    --accent:#5fb89f; --accent-ink:#0b1512; --digit:#7aa7ff; --sym:#ffa05c;
+    --weak:#f87171; --ok:#fbbf24; --good:#5fb89f; --great:#34d399;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  line-height:1.5;-webkit-text-size-adjust:100%}
+main{max-width:560px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.35rem;margin:4px 0 2px}
+.sub{color:var(--muted);font-size:.9rem;margin:0 0 16px}
+.tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:9px 4px;border-radius:9px;font:inherit;font-size:.92rem;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.result{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1.35rem;
+  word-break:break-all;line-height:1.5;min-height:2.2em;padding:4px 0;user-select:all}
+.d{color:var(--digit)} .s{color:var(--sym)}
+.meter{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin:12px 0 6px}
+.meter>i{display:block;height:100%;width:0;border-radius:99px;transition:width .25s,background .25s}
+.meta{display:flex;justify-content:space-between;font-size:.85rem;color:var(--muted)}
+.row{display:flex;gap:10px;margin-top:14px}
+.row button{flex:1;padding:12px;border-radius:10px;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.row button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.ctl{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.ctl:first-child{border-top:0;padding-top:0}
+.ctl[hidden]{display:none}
+.ctl.off{opacity:.4;pointer-events:none}
+.ctl label{font-size:.95rem}
+.ctl output{font-weight:600;min-width:1.6em;text-align:right}
+input[type=range]{flex:1;accent-color:var(--accent);max-width:200px}
+select{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.more h2{font-size:.9rem;color:var(--muted);margin:0 0 8px;font-weight:600}
+.alt{display:block;width:100%;text-align:left;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95rem;
+  padding:9px 10px;margin:0 0 6px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--ink);cursor:pointer;word-break:break-all}
+.tip{font-size:.85rem;color:var(--muted);margin:0}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);
+  padding:9px 16px;border-radius:99px;font-size:.9rem;opacity:0;pointer-events:none;transition:.2s}
+.toast.show{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+<main>
+  <h1>🔐 易記密碼生成器</h1>
+  <p class="sub">全部喺你部機本地運算，唔會上傳或儲存任何密碼。</p>
+
+  <div class="tabs" role="tablist" id="tabs">
+    <button role="tab" data-mode="phrase" aria-selected="true">Passphrase</button>
+    <button role="tab" data-mode="word" aria-selected="false">詞語密碼</button>
+    <button role="tab" data-mode="pron" aria-selected="false">發音密碼</button>
+  </div>
+
+  <div class="card">
+    <div class="result" id="result" aria-live="polite"></div>
+    <div class="meter"><i id="bar"></i></div>
+    <div class="meta"><span id="strength"></span><span id="bits"></span></div>
+    <div class="row">
+      <button class="primary" id="gen">🔄 重新生成</button>
+      <button id="copy">📋 複製</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ctl"><label for="len" id="lenLabel">字數</label>
+      <input type="range" id="len" min="3" max="10" value="5"><output id="lenOut">5</output></div>
+    <div class="ctl"><label for="fix">指定總字元數</label><input type="checkbox" id="fix"></div>
+    <div class="ctl" id="totalRow" hidden><label for="total">總字元數</label>
+      <input type="range" id="total" min="12" max="64" value="20"><output id="totalOut">20</output></div>
+    <div class="ctl"><label for="sep">分隔符號</label>
+      <select id="sep">
+        <option value="-">連字號 -</option>
+        <option value=".">點 .</option>
+        <option value="_">底線 _</option>
+        <option value=" ">空格</option>
+        <option value="">無</option>
+      </select></div>
+    <div class="ctl"><label for="cap">首字母大寫</label><input type="checkbox" id="cap" checked></div>
+    <div class="ctl"><label for="num">加入數字</label><input type="checkbox" id="num"></div>
+    <div class="ctl"><label for="sym">加入符號</label><input type="checkbox" id="sym"></div>
+    <div class="ctl" id="symRow" hidden><label for="symCount">符號數量</label>
+      <input type="range" id="symCount" min="1" max="8" value="4"><output id="symOut">4</output></div>
+  </div>
+
+  <div class="card more">
+    <h2>更多選擇（點一下選用）</h2>
+    <div id="alts"></div>
+  </div>
+
+  <div class="card">
+    <p class="tip"><b>點樣記：</b>Passphrase 係幾個隨機詞，可以想像成一幅古怪畫面（例如「蘋果騎住火山」）。發音密碼似一句外星話，容易讀出嚟記。<br><br>
+    <b>建議：</b>重要戶口（電郵、密碼管理員主密碼）用 Passphrase；每個網站要用唔同密碼，最好配合密碼管理員。詞庫約 400 個詞，所以 Passphrase 建議 7 個詞或以上（約 60 bits 起）。</p>
+  </div>
+</main>
+<div class="toast" id="toast">已複製</div>
+
+<script>
+// ===== CORE-START =====
+const WORDS = Array.from(new Set(`
+able acorn actor adobe agile album alley amber anchor angel apple apron arch arrow aspen atlas attic autumn avocado
+badge baker bamboo banjo barn basil basket beach beacon beard bench berry bicycle birch bishop blanket blaze blossom
+boat bold bonus book boot bottle branch brave bread breeze brick bridge bright brook broom brush bubble bucket
+buffalo butter button cabin cactus cake camel camera candle canoe canyon cape captain carpet castle cave cedar
+chair chalk charm cheese cherry chess chimney cider circle citrus clay cliff clock cloud clover clown coach
+cobalt coconut coffee comet compass copper coral cotton couch cousin cradle crane crayon cream creek cricket
+crown crystal cube curtain cushion daisy dancer delta denim desert diamond dinner dolphin donkey donut dragon
+dream drum dune eagle earth easel echo eclipse elbow elder elephant ember engine envelope falcon farm feather
+fence fern ferry fiddle field finch fire fjord flame flute forest fossil fountain fox frost garden garlic gem
+ginger giraffe glacier globe glove goat gold gorilla grape grass gravel guitar hammer harbor harvest hawk hazel
+heart hedge helmet heron hill honey horizon hotel hummus igloo iguana island ivory jacket jaguar jelly jewel
+jungle kayak kettle kitten kiwi ladder lagoon lantern laser lemon lentil leopard lily lime lizard lobster locket
+lotus lunar magnet mango maple marble meadow melon mint mirror mitten monkey moon moss motor mountain muffin
+museum mushroom nectar needle nest noodle north nutmeg oasis ocean olive onion orange orbit orchid otter oyster
+paddle palace panda paper parrot peach peanut pearl pebble pencil penguin pepper piano pickle pillow pilot pine
+planet plum pocket pond poppy potato prairie pretzel pumpkin puzzle quartz quilt rabbit radar rain raven
+ribbon river robin rocket rose saddle sailor salmon sand satin scarf season shadow shell shield silver sketch
+sleigh smoke snow spark spider spoon spring squirrel stamp star stone storm sugar summer sunset swan sword
+table tablet teapot temple tent thunder ticket tiger timber toast tomato tower train treasure tulip tunnel
+turtle umbrella unicorn valley velvet violin volcano walnut wander water willow window winter wizard wolf
+wonder yacht yellow yoghurt zebra zephyr zigzag
+anchor bold calm candid clever cosmic crisp curious daring dusty eager fancy fluffy frosty gentle giant glossy
+golden grand happy humble icy jolly keen kind lively lucky mellow merry mighty misty nimble noble plain proud
+quick quiet rapid rustic shiny silent sleepy smooth snowy solar spicy steady sunny swift tidy tiny vivid warm
+wild windy witty woolly young zesty
+`.trim().split(/\s+/)));
+
+const SYMBOLS = "!@#$%&*?+=";
+const CONS = "bdfgklmnprstvz";
+const VOW = "aeiou";
+
+// uniform random integer in [0, n) without modulo bias
+function rnd(n){
+  const lim = Math.floor(0x100000000 / n) * n;
+  const a = new Uint32Array(1);
+  let x;
+  do { crypto.getRandomValues(a); x = a[0]; } while (x >= lim);
+  return x % n;
+}
+const pick = arr => arr[rnd(arr.length)];
+const capFirst = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+// insert k random symbols, only at segment boundaries (cuts = indices in str, never 0)
+function addSymbols(str, k, cuts){
+  const slots = [...new Set(cuts.filter(c => c > 0 && c <= str.length))].sort((a, b) => a - b);
+  const counts = new Map();
+  for (let j = 0; j < k; j++){ const c = pick(slots); counts.set(c, (counts.get(c) || 0) + 1); }
+  let out = "", prev = 0;
+  for (const c of slots){
+    out += str.slice(prev, c); prev = c;
+    for (let j = 0; j < (counts.get(c) || 0); j++) out += pick([...SYMBOLS]);
+  }
+  out += str.slice(prev);
+  let bits = k * (Math.log2(SYMBOLS.length) + Math.log2(slots.length));
+  for (let j = 2; j <= k; j++) bits -= Math.log2(j);
+  return { text: out, bits };
+}
+
+function syllable(){ return pick([...CONS]) + pick([...VOW]); }
+
+function generate(mode, o){
+  let core = "", bits, cuts = [];
+  if (mode === "pron"){
+    // o.len = number of syllables, grouped 3 per chunk
+    const chunks = [];
+    for (let i = 0; i < o.len; i++){
+      if (i % 3 === 0) chunks.push("");
+      chunks[chunks.length-1] += syllable();
+    }
+    const segs = o.cap ? chunks.map(capFirst) : chunks;
+    segs.forEach((s, i) => { core += (i ? o.sep : "") + s; cuts.push(core.length); });
+    bits = o.len * Math.log2(CONS.length * VOW.length);
+  } else {
+    const ws = [];
+    for (let i = 0; i < o.len; i++) ws.push(pick(WORDS));
+    const segs = o.cap ? ws.map(capFirst) : ws;
+    segs.forEach((s, i) => { core += (i ? o.sep : "") + s; cuts.push(core.length); });
+    bits = o.len * Math.log2(WORDS.length);
+  }
+  let out = core;
+  if (o.num){
+    const n = 10 + rnd(90);            // 10–99
+    out += (mode === "phrase" ? o.sep : "") + n;
+    bits += Math.log2(90);
+  }
+  cuts.push(out.length);
+  if (o.sym){
+    const r = addSymbols(out, o.symCount, cuts);
+    out = r.text; bits += r.bits;
+  }
+  return { text: out, bits };
+}
+
+// exact total length (characters), separators/number/symbol included
+function generateFixed(mode, o){
+  const total = o.total, sepLen = o.sep.length;
+  const numLen = o.num ? 2 + (mode === "phrase" ? sepLen : 0) : 0;
+  const symLen = o.sym ? Math.max(1, Math.min(o.symCount, total - numLen - 3)) : 0;
+  const L = Math.max(3, total - numLen - symLen);
+  let core = "", bits = 0, cuts = [];
+  if (mode === "pron"){
+    let count = 0, startOfChunk = true;
+    for (let i = 0; i < L; i++){
+      if (count === 6 && sepLen && L - i > sepLen + 1){
+        cuts.push(core.length); core += o.sep; i += sepLen - 1; count = 0; startOfChunk = true; continue;
+      }
+      const isCons = count % 2 === 0;
+      let ch = isCons ? pick([...CONS]) : pick([...VOW]);
+      if (startOfChunk && o.cap) ch = ch.toUpperCase();
+      startOfChunk = false;
+      core += ch; count++;
+      bits += Math.log2(isCons ? CONS.length : VOW.length);
+    }
+    core = core.slice(0, L);
+    cuts = cuts.filter(c => c < core.length);
+    cuts.push(core.length);
+  } else {
+    let r = L, first = true;
+    while (r > 0){
+      const need = first ? 0 : sepLen;
+      const avail = r - need;
+      const cands = WORDS.filter(w => w.length <= avail && (avail - w.length === 0 || avail - w.length >= sepLen + 3));
+      if (avail < 1 || !cands.length){
+        for (let i = 0; i < r; i++){ core += rnd(10); bits += Math.log2(10); }
+        r = 0; cuts.push(core.length); break;
+      }
+      const w = pick(cands);
+      bits += Math.log2(cands.length);
+      core += (first ? "" : o.sep) + (o.cap ? capFirst(w) : w);
+      cuts.push(core.length);
+      r = avail - w.length; first = false;
+    }
+  }
+  let out = core;
+  if (o.num){ out += (mode === "phrase" ? o.sep : "") + (10 + rnd(90)); bits += Math.log2(90); }
+  cuts.push(out.length);
+  if (o.sym){ const r = addSymbols(out, symLen, cuts); out = r.text; bits += r.bits; }
+  return { text: out, bits };
+}
+const gen = (mode, o) => o.fix ? generateFixed(mode, o) : generate(mode, o);
+// ===== CORE-END =====
+
+const PRESETS = {
+  phrase: { len:7, sep:"-", cap:true,  num:true,  sym:false, label:"字數", min:3, max:12 },
+  word:   { len:3, sep:"",  cap:true,  num:true,  sym:true,  label:"字數", min:2, max:6  },
+  pron:   { len:9, sep:"-", cap:true,  num:true,  sym:true,  label:"音節數", min:6, max:18 }
+};
+
+const $ = id => document.getElementById(id);
+let mode = "phrase";
+let current = null;
+
+function opts(){
+  return { len:+$("len").value, sep:$("sep").value, cap:$("cap").checked, num:$("num").checked, sym:$("sym").checked,
+           fix:$("fix").checked, total:+$("total").value, symCount:+$("symCount").value };
+}
+
+function syncSym(){ $("symRow").hidden = !$("sym").checked; }
+function syncFix(){
+  const f = $("fix").checked;
+  $("totalRow").hidden = !f;
+  $("len").closest(".ctl").classList.toggle("off", f);
+}
+
+function applyPreset(m){
+  mode = m;
+  const p = PRESETS[m];
+  $("len").min = p.min; $("len").max = p.max; $("len").value = p.len;
+  $("lenLabel").textContent = p.label; $("lenOut").textContent = p.len;
+  $("sep").value = p.sep; $("cap").checked = p.cap; $("num").checked = p.num; $("sym").checked = p.sym;
+  syncSym();
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.mode === m));
+  render();
+}
+
+function paint(el, text){
+  el.textContent = "";
+  for (const ch of text){
+    if (/[0-9]/.test(ch)){ const s = document.createElement("span"); s.className = "d"; s.textContent = ch; el.appendChild(s); }
+    else if (SYMBOLS.includes(ch)){ const s = document.createElement("span"); s.className = "s"; s.textContent = ch; el.appendChild(s); }
+    else el.appendChild(document.createTextNode(ch));
+  }
+}
+
+function showStrength(bits, n){
+  let label, color, pct;
+  if (bits < 40){ label = "偏弱"; color = "var(--weak)"; }
+  else if (bits < 60){ label = "普通"; color = "var(--ok)"; }
+  else if (bits < 80){ label = "強"; color = "var(--good)"; }
+  else { label = "非常強"; color = "var(--great)"; }
+  pct = Math.min(100, bits / 100 * 100);
+  $("bar").style.width = pct + "%"; $("bar").style.background = color;
+  $("strength").textContent = "強度：" + label;
+  $("bits").textContent = n + " 字元 · 約 " + Math.round(bits) + " bits";
+}
+
+function render(){
+  const o = opts();
+  current = gen(mode, o);
+  paint($("result"), current.text);
+  showStrength(current.bits, current.text.length);
+  const alts = $("alts"); alts.textContent = "";
+  for (let i = 0; i < 4; i++){
+    const g = gen(mode, o);
+    const b = document.createElement("button");
+    b.className = "alt"; b.type = "button"; b.textContent = g.text;
+    b.addEventListener("click", () => { current = g; paint($("result"), g.text); showStrength(g.bits, g.text.length); });
+    alts.appendChild(b);
+  }
+}
+
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 1400);
+}
+
+async function copy(){
+  const text = current.text;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("已複製 ✓");
+  } catch (e) {
+    try {
+      const r = document.createRange(); r.selectNodeContents($("result"));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      toast(document.execCommand("copy") ? "已複製 ✓" : "請長按選取後複製");
+    } catch (e2) { toast("請長按選取後複製"); }
+  }
+}
+
+document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => applyPreset(b.dataset.mode)));
+$("gen").addEventListener("click", render);
+$("copy").addEventListener("click", copy);
+$("len").addEventListener("input", () => { $("lenOut").textContent = $("len").value; render(); });
+["sep","cap","num"].forEach(id => $(id).addEventListener("change", render));
+$("sym").addEventListener("change", () => { syncSym(); render(); });
+$("symCount").addEventListener("input", () => { $("symOut").textContent = $("symCount").value; render(); });
+$("fix").addEventListener("change", () => { syncFix(); render(); });
+$("total").addEventListener("input", () => { $("totalOut").textContent = $("total").value; render(); });
+syncFix();
+applyPreset("phrase");
+</script>
+</body>
+</html>
